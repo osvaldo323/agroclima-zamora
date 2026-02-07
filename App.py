@@ -1,9 +1,7 @@
 app.py
-
 import streamlit as st
 import pandas as pd
 import numpy as np
-
 st.set_page_config(layout="wide")
 
 st.title("Plataforma Agroclimática Zamora - FAO 56")
