@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>IrrigaPro v3.0 | FAO-56 Michoacán</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root { --primary: #1e3a8a; }
+        body { font-family: system-ui, -apple-system, sans-serif; }
+        .input-field { @apply w-full border border-slate-300 rounded-lg px-3 py-2 text-base focus:ring-2 focus:ring-blue-500 bg-slate-50 transition-all; }
+        .card { @apply bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4; }
+        .btn-action { @apply flex-1 py-3 px-4 rounded-xl font-bold transition-transform active:scale-95 flex items-center justify-center gap-2 text-sm; }
+        .indicator { @apply text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-900 pb-24">
+
+<div class="max-w-4xl mx-auto p-4">
+    
+    <header class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-2xl font-black text-blue-900">IRRIGAPRO <span class="text-blue-500 font-light">3.0</span></h1>
+            <p class="text-[10px] font-bold text-slate-500 uppercase tracking-tighter italic">Goteo de Precisión · FAO-56</p>
+        </div>
+        <div id="connection-status" class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-[10px] font-black">
+            <i class="fa-solid fa-bolt"></i> ONLINE
+        </div>
+    </header>
+
+    <section class="card">
+        <h3 class="font-black text-slate-700 mb-3 uppercase text-xs">Configuración del Sector</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+                <label class="indicator">Cama (m)</label>
+                <input id="bedSpacing" type="number" step="0.1" class="input-field" value="1.6">
+            </div>
+            <div>
+                <label class="indicator">Dist. Planta (m)</label>
+                <input id="plantSpacing" type="number" step="0.01" class="input-field" value="0.30">
+            </div>
+            <div>
+                <label class="indicator">Cintillas/Cama</label>
+                <input id="tapesPerBed" type="number" class="input-field" value="2">
+            </div>
+            <div>
+                <label class="indicator">Gasto Gotero (L/h)</label>
+                <input id="emitterFlow" type="number" step="0.1" class="input-field" value="1.0">
+            </div>
+        </div>
+    </section>
+
+    <section class="grid md:grid-cols-2 gap-4">
+        <div class="card">
+            <h3 class="font-black text-slate-700 mb-3 uppercase text-xs">Datos Climáticos</h3>
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <div><label class="indicator">Latitud</label><input id="lat" type="number" class="input-field" value="19.98"></div>
+                <div><label class="indicator">Longitud</label><input id="lon" type="number" class="input-field" value="-102.28"></div>
+            </div>
+            <button onclick="App.syncClimate()" class="w-full bg-blue-700 text-white font-bold py-3 rounded-xl hover:bg-blue-800 flex items-center justify-center gap-2">
+                <i id="sync-icon" class="fa-solid fa-cloud-arrow-down"></i> ACTUALIZAR CLIMA
+            </button>
+        </div>
+
+        <div class="card">
+            <h3 class="font-black text-slate-700 mb-3 uppercase text-xs">Ajustes Agronómicos</h3>
+            <div class="grid grid-cols-2 gap-3">
+                <div><label class="indicator">Kc Etapa</label><input id="kc" type="number" step="0.05" class="input-field" value="0.95"></div>
+                <div><label class="indicator">Frac. Lavado (%)</label><input id="leaching" type="number" class="input-field" value="10"></div>
+                <div class="col-span-2">
+                    <label class="indicator">N° de Pulsos</label>
+                    <input id="numPulsos" type="number" class="input-field" value="4">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div id="results" class="grid grid-cols-3 gap-3 my-4">
+        <div class="bg-blue-900 text-white p-3 rounded-2xl text-center shadow-lg">
+            <span class="text-[9px] uppercase font-bold opacity-70">Tiempo Total</span>
+            <div id="kpi-min" class="text-xl font-black">--</div>
+            <span class="text-[9px]">MINUTOS</span>
+        </div>
+        <div class="bg-emerald-600 text-white p-3 rounded-2xl text-center shadow-lg">
+            <span class="text-[9px] uppercase font-bold opacity-70">Lámina Bruta</span>
+            <div id="kpi-m3" class="text-xl font-black">--</div>
+            <span class="text-[9px]">M³/HA</span>
+        </div>
+        <div class="bg-amber-500 text-white p-3 rounded-2xl text-center shadow-lg">
+            <span class="text-[9px] uppercase font-bold opacity-70">Riego/Planta</span>
+            <div id="kpi-lpl" class="text-xl font-black">--</div>
+            <span class="text-[9px]">LITROS</span>
+        </div>
+    </div>
+
+    <section class="grid lg:grid-cols-2 gap-4">
+        <div class="card overflow-hidden">
+            <table class="w-full text-sm">
+                <thead class="bg-slate-50">
+                    <tr><th class="p-2 border-b text-left">Pulso</th><th class="p-2 border-b">Tiempo</th><th class="p-2 border-b">Vol (L)</th></tr>
+                </thead>
+                <tbody id="pulsos-table" class="divide-y"></tbody>
+            </table>
+        </div>
+        <div class="card h-56"><canvas id="chartPulsos"></canvas></div>
+    </section>
+
+    <footer class="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t flex gap-3">
+        <button onclick="App.calculate()" class="btn-action bg-green-600 text-white"><i class="fa-solid fa-calculator"></i> CALCULAR</button>
+        <button onclick="App.exportLogs()" class="btn-action bg-slate-800 text-white"><i class="fa-solid fa-file-csv"></i> EXPORTAR</button>
+    </footer>
+
+    <div class="hidden">
+        <input id="tmax" value="25"> <input id="tmin" value="12">
+        <input id="hrmax" value="80"> <input id="hrmin" value="30">
+        <input id="wind" value="2.1"> <input id="rad" value="18">
+    </div>
+</div>
+
+<script>
+const App = {
+    chart: null,
+    history: [],
+
+    init() {
+        const ctx = document.getElementById('chartPulsos').getContext('2d');
+        this.chart = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: [], datasets: [{ label: 'Litros/P', data: [], backgroundColor: '#3b82f6', borderRadius: 5 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+        this.syncClimate();
+    },
+
+    async syncClimate() {
+        const icon = document.getElementById('sync-icon');
+        icon.classList.add('animate-spin');
+        const lat = document.getElementById('lat').value;
+        const lon = document.getElementById('lon').value;
+
+        try {
+            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,relative_humidity_2m_max,relative_humidity_2m_min,shortwave_radiation_sum,windspeed_10m_max&timezone=auto`);
+            const d = (await res.json()).daily;
+            document.getElementById('tmax').value = d.temperature_2m_max[0];
+            document.getElementById('tmin').value = d.temperature_2m_min[0];
+            document.getElementById('hrmax').value = d.relative_humidity_2m_max[0];
+            document.getElementById('hrmin').value = d.relative_humidity_2m_min[0];
+            document.getElementById('rad').value = d.shortwave_radiation_sum[0];
+            document.getElementById('wind').value = d.windspeed_10m_max[0];
+            this.calculate();
+        } catch(e) {
+            console.log("Modo offline activado");
+            document.getElementById('connection-status').innerHTML = "MODO OFFLINE";
+            document.getElementById('connection-status').className = "bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-[10px] font-black";
+        } finally { icon.classList.remove('animate-spin'); }
+    },
+
+    calculate() {
+        const get = id => parseFloat(document.getElementById(id).value);
+
+        const inputs = {
+            bedS: get('bedSpacing'), plantS: get('plantSpacing'), tapes: get('tapesPerBed'),
+            flowG: get('emitterFlow'), kc: get('kc'), leaching: get('leaching')/100,
+            pulsos: get('numPulsos'), tmax: get('tmax'), tmin: get('tmin'),
+            hrmax: get('hrmax'), hrmin: get('hrmin'), rad: get('rad'), wind: get('wind')
+        };
+
+        // 🔹 Motor Clima (FAO-56 Corregido)
+        const tm = (inputs.tmax + inputs.tmin) / 2;
+        const delta = (4098 * (0.6108 * Math.exp((17.27 * tm) / (tm + 237.3)))) / Math.pow(tm + 237.3, 2);
+        const rn = inputs.rad * 0.77;
+        
+        // CORRECCIÓN VIENTO A 2M
+        const u2 = inputs.wind * (4.87 / Math.log(67.8 * 10 - 5.42)); 
+        const gamma = 0.000665 * 101;
+
+        const es = (0.6108 * Math.exp((17.27 * inputs.tmax) / (inputs.tmax + 237.3)) + 0.6108 * Math.exp((17.27 * inputs.tmin) / (inputs.tmin + 237.3))) / 2;
+        const ea = ((0.6108 * Math.exp((17.27 * inputs.tmin) / (inputs.tmin + 237.3)) * (inputs.hrmax/100)) + (0.6108 * Math.exp((17.27 * inputs.tmax) / (inputs.tmax + 237.3)) * (inputs.hrmin/100))) / 2;
+
+        const et0 = (0.408 * delta * rn + gamma * (900 / (tm + 273)) * u2 * (es - ea)) / (delta + gamma * (1 + 0.34 * u2));
+        const etc = et0 * inputs.kc;
+
+        // 🔹 Goteo y Láminas (Corrección Neta/Bruta)
+        const eficiencia = 0.90;
+        const netDepth = etc / (1 - inputs.leaching);
+        const grossDepth = netDepth / eficiencia;
+
+        const espaciamientoGotero = 0.20; // Estándar cintilla
+        const precip = (inputs.flowG * inputs.tapes) / (inputs.bedS * espaciamientoGotero);
+        const timeMin = (grossDepth / precip) * 60;
+
+        // 🔹 Cálculos Planta (Fresa 2 hileras)
+        const hileras = 2;
+        const areaPlanta = (inputs.bedS / hileras) * inputs.plantS;
+        const litrosPlanta = grossDepth * areaPlanta;
+        const m3ha = grossDepth * 10;
+
+        // UI Updates
+        document.getElementById('kpi-min').innerText = Math.round(timeMin);
+        document.getElementById('kpi-m3').innerText = m3ha.toFixed(1);
+        document.getElementById('kpi-lpl').innerText = litrosPlanta.toFixed(2);
+
+        this.renderPulsos(timeMin, litrosPlanta, inputs.pulsos);
+        
+        // Guardar en historial
+        this.history.push({ fecha: new Date().toLocaleTimeString(), m3: m3ha.toFixed(1), lpl: litrosPlanta.toFixed(2) });
+    },
+
+    renderPulsos(totalMin, totalLitros, n) {
+        const table = document.getElementById('pulsos-table');
+        table.innerHTML = "";
+        const data = [];
+        for(let i=1; i<=n; i++) {
+            const tP = (totalMin / n).toFixed(1);
+            const lP = (totalLitros / n).toFixed(2);
+            table.innerHTML += `<tr><td class="p-2 font-black text-blue-800">${i}</td><td class="p-2 text-center">${tP} min</td><td class="p-2 text-center font-bold text-emerald-700">${lP} L</td></tr>`;
+            data.push(lP);
+        }
+        this.chart.data.labels = data.map((_,i) => `P${i+1}`);
+        this.chart.data.datasets[0].data = data;
+        this.chart.update();
+    },
+
+    exportLogs() {
+        let csv = "Hora,M3/HA,L/Planta\n";
+        this.history.forEach(h => csv += `${h.fecha},${h.m3},${h.lpl}\n`);
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'riego_fresa.csv'; a.click();
+    }
+};
+
+window.onload = () => App.init();
+</script>
+</body>
+</html>
